@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Link AoIP Ponto a Ponto</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+    button { padding: 10px 16px; margin: 8px 0; cursor: pointer; }
+    input { padding: 8px; width: calc(100% - 20px); margin: 6px 0; }
+    .status { padding: 10px; background: #f0f0f0; margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h2>Link de Áudio IP (P2P)</h2>
+
+  <div>
+    <p>Seu ID neste computador:</p>
+    <input type="text" id="meu-id" readonly placeholder="Gerando ID...">
+  </div>
+
+  <hr>
+
+  <div>
+    <p>Conectar ao outro computador:</p>
+    <input type="text" id="id-destino" placeholder="Cole o ID do outro computador aqui">
+    <br>
+    <button id="btn-conectar">Iniciar Transmissão de Áudio</button>
+  </div>
+
+  <div class="status" id="status-texto">Status: Aguardando inicialização...</div>
+
+  <!-- Elemento que toca o áudio recebido da outra ponta -->
+  <audio id="audio-remoto" autoplay playsinline></audio>
+
+  <script>
+    const statusTxt = document.getElementById('status-texto');
+    const inputMeuId = document.getElementById('meu-id');
+    const inputDestino = document.getElementById('id-destino');
+    const btnConectar = document.getElementById('btn-conectar');
+    const audioRemoto = document.getElementById('audio-remoto');
+
+    let streamLocal;
+
+    // 1. Inicializa o Peer (usa os servidores gratuitos do PeerJS na nuvem para handshake)
+    const peer = new Peer();
+
+    peer.on('open', (id) => {
+      inputMeuId.value = id;
+      statusTxt.innerText = 'Status: Pronto para conectar. Compartilhe seu ID.';
+    });
+
+    // 2. Captura o microfone/placa de som local com alta fidelidade
+    async function capturarAudio() {
+      try {
+        streamLocal = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false, // Desativa filtros de voz para manter qualidade de broadcast/música
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 2          // Tenta pegar sinal estéreo
+          },
+          video: false
+        });
+        return streamLocal;
+      } catch (err) {
+        alert('Erro ao acessar placa de som ou microfone: ' + err.message);
+        throw err;
+      }
+    }
+
+    // 3. Atender chamada vinda do outro computador
+    peer.on('call', async (call) => {
+      statusTxt.innerText = 'Status: Recebendo conexão...';
+      const stream = await capturarAudio();
+      call.answer(stream); // Envia o áudio local de volta
+
+      call.on('stream', (streamRecebido) => {
+        audioRemoto.srcObject = streamRecebido;
+        statusTxt.innerText = 'Status: Áudio P2P CONECTADO e transmitindo!';
+      });
+
+      call.on('close', () => {
+        statusTxt.innerText = 'Status: Conexão encerrada.';
+      });
+    });
+
+    // 4. Ligar para o ID digitado
+    btnConectar.addEventListener('click', async () => {
+      const destino = inputDestino.value.trim();
+      if (!destino) {
+        alert('Por favor, insira o ID de destino.');
+        return;
+      }
+
+      statusTxt.innerText = 'Status: Conectando...';
+      const stream = await capturarAudio();
+      const call = peer.call(destino, stream);
+
+      call.on('stream', (streamRecebido) => {
+        audioRemoto.srcObject = streamRecebido;
+        statusTxt.innerText = 'Status: Áudio P2P CONECTADO e transmitindo!';
+      });
+
+      call.on('close', () => {
+        statusTxt.innerText = 'Status: Conexão encerrada.';
+      });
+
+      call.on('error', (err) => {
+        statusTxt.innerText = 'Status: Erro na chamada: ' + err;
+      });
+    });
+  </script>
+</body>
+</html>
